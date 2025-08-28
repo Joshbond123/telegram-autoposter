@@ -1,0 +1,65 @@
+<!-- templates/scheduler.html: Scheduler configuration page for setting posting intervals/times -->
+<!-- Supports interval (seconds/minutes/hours) or fixed times (e.g., 08:00, 14:00); active toggle -->
+<!-- Beautiful, responsive form with Bootstrap and icons; validation handled in main.py -->
+<!-- Edge cases: Invalid inputs → flash errors (via main.py); extends base.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h2 class="mb-4"><i class="bi bi-clock-fill me-2"></i>Scheduler</h2>
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('scheduler') }}">
+                <div class="mb-3">
+                    <label class="form-label">Scheduling Mode</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="mode" id="interval" value="interval" {% if config.mode == 'interval' %}checked{% endif %}>
+                        <label class="form-check-label" for="interval">Interval</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="mode" id="fixed" value="fixed" {% if config.mode == 'fixed' %}checked{% endif %}>
+                        <label class="form-check-label" for="fixed">Fixed Times</label>
+                    </div>
+                </div>
+                <!-- Interval settings -->
+                <div id="interval-settings" class="mb-3 {% if config.mode != 'interval' %}d-none{% endif %}">
+                    <label for="interval_value" class="form-label">Interval Value</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-hourglass-split"></i></span>
+                        <input type="number" class="form-control" id="interval_value" name="interval_value" value="{{ config.interval.value | default(15) }}" min="1">
+                        <select class="form-select" name="interval_unit">
+                            <option value="seconds" {% if config.interval.unit == 'seconds' %}selected{% endif %}>Seconds</option>
+                            <option value="minutes" {% if config.interval.unit == 'minutes' %}selected{% endif %}>Minutes</option>
+                            <option value="hours" {% if config.interval.unit == 'hours' %}selected{% endif %}>Hours</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- Fixed times settings -->
+                <div id="fixed-settings" class="mb-3 {% if config.mode != 'fixed' %}d-none{% endif %}">
+                    <label for="fixed_times" class="form-label">Fixed Times (comma-separated, e.g., 08:00,14:00)</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-clock"></i></span>
+                        <input type="text" class="form-control" id="fixed_times" name="fixed_times" value="{{ config.fixed_times | join(', ') | default('') }}" placeholder="08:00,14:00,18:00">
+                    </div>
+                </div>
+                <!-- Active toggle -->
+                <div class="mb-3 form-check">
+                    <input type="checkbox" class="form-check-input" id="active" name="active" {% if config.active %}checked{% endif %}>
+                    <label class="form-check-label" for="active">Scheduler Active</label>
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-save me-2"></i>Save Scheduler</button>
+            </form>
+        </div>
+    </div>
+</div>
+<!-- JavaScript to toggle interval/fixed settings visibility -->
+<script>
+    document.getElementById('interval').addEventListener('change', function() {
+        document.getElementById('interval-settings').classList.remove('d-none');
+        document.getElementById('fixed-settings').classList.add('d-none');
+    });
+    document.getElementById('fixed').addEventListener('change', function() {
+        document.getElementById('fixed-settings').classList.remove('d-none');
+        document.getElementById('interval-settings').classList.add('d-none');
+    });
+</script>
+{% endblock %}

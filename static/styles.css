@@ -1,0 +1,77 @@
+/* static/styles.css: Custom CSS for Telegram Auto-Poster Web Dashboard */
+/* Enhances Bootstrap with gradients, hover effects, and icon styling for a beautiful UI */
+/* Applied globally via base.html; responsive for mobile and desktop */
+body {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+.sidebar {
+    background: linear-gradient(180deg, #343a40 0%, #23272b 100%);
+    box-shadow: 2px 0 5px rgba(0,0,0,0.2);
+}
+
+.sidebar a {
+    transition: background-color 0.3s, padding-left 0.3s;
+}
+
+.sidebar a:hover {
+    padding-left: 20px;
+    background-color: #495057 !important;
+}
+
+.nav-icon {
+    color: #17a2b8;
+}
+
+.card {
+    background-color: #ffffff;
+    border: none;
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+.btn-primary {
+    background: linear-gradient(45deg, #007bff, #00d4ff);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(45deg, #0056b3, #009bc6);
+}
+
+.btn-danger {
+    background: linear-gradient(45deg, #dc3545, #ff6b6b);
+}
+
+.btn-danger:hover {
+    background: linear-gradient(45deg, #a71d2a, #c82333);
+}
+
+.alert-success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+.alert-error {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f1f3f5;
+}
+
+.img-thumbnail, video {
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}

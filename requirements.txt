@@ -1,0 +1,8 @@
+# requirements.txt: Python dependencies for Telegram Auto-Poster Web Dashboard
+# Ensures all required libraries for Flask backend, Telegram API, scheduling, and file uploads
+# No version pinning to use latest compatible versions on Render
+flask                    # Web framework for routing and templates
+gunicorn                # WSGI server for Render deployment (sync worker for stability)
+telethon                # Telegram API client for auth, group fetching, and posting (text, media, links, emojis)
+apscheduler             # Background scheduler for interval/fixed-time posting with rest periods
+werkzeug                # Utility for secure file uploads (bundled with Flask, explicit for clarity)

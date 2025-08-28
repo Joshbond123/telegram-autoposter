@@ -1,0 +1,52 @@
+<!-- templates/logs.html: Logs page for displaying auto-posting history -->
+<!-- Shows timestamp, group, message preview, status, and errors in a responsive table -->
+<!-- Uses Bootstrap for clean design, Bootstrap Icons for status indicators -->
+<!-- Edge cases: No logs → info message; extends base.html for sidebar -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h2 class="mb-4"><i class="bi bi-journal-text me-2"></i>Logs</h2>
+    {% if logs %}
+        <div class="card">
+            <div class="card-body">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th scope="col">Timestamp</th>
+                            <th scope="col">Group</th>
+                            <th scope="col">Message Preview</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Error</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for log in logs %}
+                            <tr>
+                                <td>{{ log.timestamp }}</td>
+                                <td>{{ log.group }}</td>
+                                <td>{{ log.message_preview | default('N/A') }}</td>
+                                <td>
+                                    {% if log.status == 'Success' %}
+                                        <i class="bi bi-check-circle-fill text-success me-2"></i>{{ log.status }}
+                                    {% elif log.status == 'Failed' %}
+                                        <i class="bi bi-x-circle-fill text-danger me-2"></i>{{ log.status }}
+                                    {% elif log.status == 'Resting' %}
+                                        <i class="bi bi-pause-circle-fill text-warning me-2"></i>{{ log.status }}
+                                    {% elif log.status == 'Resumed' %}
+                                        <i class="bi bi-play-circle-fill text-primary me-2"></i>{{ log.status }}
+                                    {% else %}
+                                        {{ log.status }}
+                                    {% endif %}
+                                </td>
+                                <td>{{ log.error | default('None') }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% else %}
+        <p class="text-muted"><i class="bi bi-info-circle me-2"></i>No logs available. Start posting to see activity here.</p>
+    {% endif %}
+</div>
+{% endblock %}

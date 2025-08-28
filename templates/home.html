@@ -1,0 +1,62 @@
+<!-- templates/home.html: Home/Overview page for Telegram Auto-Poster Dashboard -->
+<!-- Displays username, last message (text + media), next schedule, enabled groups, test button -->
+<!-- Beautiful, responsive design with Bootstrap cards and icons; mobile-friendly -->
+<!-- Edge cases: No messages (shows 'None'), no schedule (shows 'N/A'), extends base.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h2 class="mb-4"><i class="bi bi-house-fill me-2"></i>Dashboard Overview</h2>
+    <div class="row">
+        <!-- Username Card -->
+        <div class="col-md-6 mb-4">
+            <div class="card p-3">
+                <h5><i class="bi bi-person-circle me-2"></i>Logged-in User</h5>
+                <p>{{ username | default('Unknown') }}</p>
+            </div>
+        </div>
+        <!-- Enabled Groups Card -->
+        <div class="col-md-6 mb-4">
+            <div class="card p-3">
+                <h5><i class="bi bi-chat-square-text me-2"></i>Enabled Groups</h5>
+                <p>{{ enabled_groups }} group(s) enabled for auto-posting</p>
+            </div>
+        </div>
+        <!-- Last Message Card -->
+        <div class="col-md-6 mb-4">
+            <div class="card p-3">
+                <h5><i class="bi bi-envelope-fill me-2"></i>Last Message Sent</h5>
+                <p>
+                    {% if last_message.text %}
+                        {{ last_message.text | truncate(50, true) }}
+                    {% else %}
+                        No text
+                    {% endif %}
+                    {% if last_message.media %}
+                        [Media: {{ last_message.media | length }} file(s)]
+                        {% for media in last_message.media %}
+                            {% if media.endswith(('.png', '.jpg', '.jpeg', '.gif')) %}
+                                <img src="{{ url_for('static', filename=media.split('static/')[1]) }}" alt="Media Preview" class="img-thumbnail mt-2" style="max-width: 100px;">
+                            {% elif media.endswith('.mp4') %}
+                                <video controls class="mt-2" style="max-width: 100px;">
+                                    <source src="{{ url_for('static', filename=media.split('static/')[1]) }}" type="video/mp4">
+                                </video>
+                            {% else %}
+                                <p class="mt-2"><i class="bi bi-file-earmark me-2"></i>{{ media.split('/')[-1] }}</p>
+                            {% endif %}
+                        {% endfor %}
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+        <!-- Next Schedule Card -->
+        <div class="col-md-6 mb-4">
+            <div class="card p-3">
+                <h5><i class="bi bi-clock-fill me-2"></i>Next Scheduled Post</h5>
+                <p>{{ next_time }}</p>
+            </div>
+        </div>
+    </div>
+    <!-- Send Test Message Button -->
+    <a href="{{ url_for('send_test') }}" class="btn btn-primary"><i class="bi bi-send-fill me-2"></i>Send Test Message Now</a>
+</div>
+{% endblock %}

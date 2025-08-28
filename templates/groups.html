@@ -1,0 +1,44 @@
+<!-- templates/groups.html: Groups management page for selecting Telegram groups/channels -->
+<!-- Displays table with group names, enable/disable checkboxes, last sent timestamp -->
+<!-- Includes refresh button to fetch latest groups; uses Bootstrap for responsive design, icons for usability -->
+<!-- Edge cases: No groups → info message; extends base.html for sidebar -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h2 class="mb-4"><i class="bi bi-chat-square-text-fill me-2"></i>Groups Management</h2>
+    <form method="POST" action="{{ url_for('groups') }}">
+        <div class="mb-3">
+            <a href="{{ url_for('groups', refresh='true') }}" class="btn btn-secondary"><i class="bi bi-arrow-repeat me-2"></i>Refresh Groups</a>
+        </div>
+        {% if groups %}
+            <div class="card">
+                <div class="card-body">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th scope="col">Enable</th>
+                                <th scope="col">Group Name</th>
+                                <th scope="col">Last Sent</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for group in groups %}
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" name="enabled_groups" value="{{ group.id }}" {% if group.enabled %}checked{% endif %}>
+                                    </td>
+                                    <td>{{ group.name }}</td>
+                                    <td>{{ group.last_sent | default('Never') }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <button type="submit" class="btn btn-primary"><i class="bi bi-save me-2"></i>Save Changes</button>
+                </div>
+            </div>
+        {% else %}
+            <p class="text-muted"><i class="bi bi-info-circle me-2"></i>No groups found. Click "Refresh Groups" to fetch or join some groups/channels in Telegram.</p>
+        {% endif %}
+    </form>
+</div>
+{% endblock %}

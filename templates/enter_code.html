@@ -1,0 +1,25 @@
+<!-- templates/enter_code.html: Page for entering Telegram login code -->
+<!-- Beautiful, centered form with Bootstrap styling and icons; responsive for mobile -->
+<!-- Edge cases: Displays flash messages for errors (e.g., empty code, invalid code); extends base.html for sidebar -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card p-4 mt-5">
+                <h2 class="text-center mb-4"><i class="bi bi-key-fill me-2"></i>Enter Telegram Code</h2>
+                <form method="POST" action="{{ url_for('enter_code') }}">
+                    <div class="mb-3">
+                        <label for="code" class="form-label">Login Code</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="bi bi-lock"></i></span>
+                            <input type="text" class="form-control" id="code" name="code" placeholder="123456" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100"><i class="bi bi-check-circle me-2"></i>Verify Code</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

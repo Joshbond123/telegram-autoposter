@@ -1,0 +1,82 @@
+<!-- templates/messages.html: Updated messages composer page for creating/viewing/deleting messages -->
+<!-- Supports text (HTML, emojis, links), multiple media uploads, rotation mode, and delete buttons -->
+<!-- Features form with drag-and-drop, table with delete action; uses Bootstrap and icons for beauty -->
+<!-- Edge cases: No messages → empty table; invalid uploads → flash error; extends base.html -->
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+    <h2 class="mb-4"><i class="bi bi-pencil-square me-2"></i>Messages / Composer</h2>
+    <!-- Message creation form -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <h5><i class="bi bi-plus-circle me-2"></i>Create New Message</h5>
+            <form method="POST" action="{{ url_for('messages') }}" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="text" class="form-label">Message Text (supports HTML, emojis, links)</label>
+                    <textarea class="form-control" id="text" name="text" rows="4" placeholder="Enter message (e.g., Hello <b>world</b>! 😊)"></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="media" class="form-label">Upload Media (Images, Videos, Documents)</label>
+                    <input type="file" class="form-control" id="media" name="media" multiple accept=".png,.jpg,.jpeg,.gif,.mp4,.pdf,.doc,.docx">
+                </div>
+                <div class="mb-3">
+                    <label for="rotation" class="form-label">Message Rotation</label>
+                    <select class="form-select" id="rotation" name="rotation">
+                        <option value="sequential" {% if rotation == 'sequential' %}selected{% endif %}>Sequential</option>
+                        <option value="random" {% if rotation == 'random' %}selected{% endif %}>Random</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="bi bi-send-fill me-2"></i>Add Message</button>
+            </form>
+        </div>
+    </div>
+    <!-- Existing messages table -->
+    {% if messages %}
+        <div class="card">
+            <div class="card-body">
+                <h5><i class="bi bi-list-ul me-2"></i>Saved Messages</h5>
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th scope="col">Text</th>
+                            <th scope="col">Media</th>
+                            <th scope="col">Type</th>
+                            <th scope="col">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for index, message in messages | enumerate %}
+                            <tr>
+                                <td>{{ message.text | truncate(50, true) | default('No text') }}</td>
+                                <td>
+                                    {% if message.media %}
+                                        {% for media in message.media %}
+                                            {% if media.endswith(('.png', '.jpg', '.jpeg', '.gif')) %}
+                                                <img src="{{ url_for('static', filename=media.split('static/')[1]) }}" alt="Media Preview" class="img-thumbnail mt-2" style="max-width: 50px;">
+                                            {% elif media.endswith('.mp4') %}
+                                                <video controls class="mt-2" style="max-width: 50px;">
+                                                    <source src="{{ url_for('static', filename=media.split('static/')[1]) }}" type="video/mp4">
+                                                </video>
+                                            {% else %}
+                                                <p class="mt-2"><i class="bi bi-file-earmark me-2"></i>{{ media.split('/')[-1] }}</p>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        No media
+                                    {% endif %}
+                                </td>
+                                <td>{{ message.type | capitalize }}</td>
+                                <td>
+                                    <a href="{{ url_for('delete_message', index=index) }}" class="btn btn-danger btn-sm" onclick="return confirm('Delete this message?')"><i class="bi bi-trash-fill me-2"></i>Delete</a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {% else %}
+        <p class="text-muted"><i class="bi bi-info-circle me-2"></i>No messages created yet.</p>
+    {% endif %}
+</div>
+{% endblock %}

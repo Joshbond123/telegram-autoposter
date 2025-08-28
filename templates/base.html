@@ -1,0 +1,72 @@
+<!-- templates/base.html: Updated base template with custom styles.css -->
+<!-- Uses Bootstrap 5 for responsive design, Bootstrap Icons for navigation/buttons -->
+<!-- Features a fixed sidebar (collapsible on mobile), flash messages, and content block -->
+<!-- Edge cases: No flash messages → empty alert area; mobile view → sidebar collapses -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram Auto-Poster Dashboard</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <!-- Inline CSS for sidebar and responsiveness -->
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .sidebar { height: 100vh; width: 250px; position: fixed; top: 0; left: 0; padding-top: 20px; transition: transform 0.3s; }
+        .sidebar a { color: white; padding: 15px; display: block; text-decoration: none; font-size: 1.1em; }
+        .sidebar .nav-icon { margin-right: 10px; }
+        .content { margin-left: 250px; padding: 20px; }
+        .sidebar-toggle { display: none; }
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); width: 200px; z-index: 1000; }
+            .sidebar.active { transform: translateX(0); }
+            .content { margin-left: 0; }
+            .sidebar-toggle { display: block; position: fixed; top: 10px; left: 10px; z-index: 1100; }
+        }
+        .alert { margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <!-- Sidebar toggle button for mobile -->
+    <button class="btn btn-dark sidebar-toggle" onclick="toggleSidebar()">
+        <i class="bi bi-list"></i>
+    </button>
+    <!-- Sidebar navigation with icons -->
+    <div class="sidebar" id="sidebar">
+        <h4 class="text-white text-center mb-4">Auto-Poster Dashboard</h4>
+        <a href="{{ url_for('home') }}"><i class="bi bi-house nav-icon"></i> Home / Overview</a>
+        <a href="{{ url_for('groups') }}"><i class="bi bi-chat-square-text nav-icon"></i> Groups Management</a>
+        <a href="{{ url_for('messages') }}"><i class="bi bi-pencil-square nav-icon"></i> Messages / Composer</a>
+        <a href="{{ url_for('scheduler') }}"><i class="bi bi-clock nav-icon"></i> Scheduler</a>
+        <a href="{{ url_for('logs') }}"><i class="bi bi-journal-text nav-icon"></i> Logs</a>
+    </div>
+    <!-- Main content area -->
+    <div class="content">
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        <i class="bi bi-info-circle me-2"></i>{{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        <!-- Content block -->
+        {% block content %}{% endblock %}
+    </div>
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('active');
+        }
+    </script>
+</body>
+</html>
