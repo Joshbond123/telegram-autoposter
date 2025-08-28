@@ -1,13 +1,12 @@
 # main.py: Telegram Auto-Poster Web Dashboard (Render-ready)
-# Handles Telegram login, groups, messages, scheduling, uploads
-# Uses Flask, Telethon, APScheduler, and asyncio safely with Gunicorn
+# Full rewrite with safe scheduler, async Telethon calls, Flask routes, uploads, JSON storage
+# Handles login, 2FA, groups, messages, scheduling, logs, and test sending
 
 import os
 import json
 import asyncio
 import threading
 import time
-import random
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PasswordHashInvalidError, FloodWaitError
@@ -39,10 +38,10 @@ LOGS_FILE = os.path.join(STORAGE_FOLDER, 'logs.json')
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'pdf', 'doc', 'docx'}
 
+# -------------------- Helpers --------------------
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# -------------------- Telethon Client Helpers --------------------
 def get_client():
     return TelegramClient(SESSION_FILE, API_ID, API_HASH)
 
@@ -73,7 +72,6 @@ async def fetch_groups():
                 groups.append({'id': entity.id, 'name': entity.title, 'enabled': False, 'last_sent': None})
     return groups
 
-# -------------------- JSON Storage Helpers --------------------
 def load_json(file, default=None):
     if os.path.exists(file):
         try:
@@ -91,14 +89,11 @@ def save_json(file, data):
     except Exception as e:
         print(f"Error saving JSON {file}: {e}")
 
-# -------------------- Scheduler Startup --------------------
-def start_scheduler_thread():
-    """Start APScheduler in a background thread."""
-    threading.Thread(target=start_scheduler, daemon=True).start()
-
+# -------------------- Scheduler Setup --------------------
 @app.before_first_request
-def initialize():
-    start_scheduler_thread()
+def initialize_scheduler():
+    """Start scheduler in a background daemon thread safely for Render/Gunicorn."""
+    threading.Thread(target=start_scheduler, daemon=True).start()
 
 # -------------------- Flask Routes --------------------
 @app.route('/')
@@ -194,11 +189,173 @@ def home():
     return render_template('home.html', username=username, last_message=last_message,
                            next_time=scheduler.get('next_time', 'N/A'), enabled_groups=enabled_groups)
 
-# -------------------- Add your remaining routes here --------------------
-# groups, messages, delete_message, delete_group, scheduler, logs, send_test
-# (Keep them as in your original code, they will work unchanged)
+@app.route('/groups', methods=['GET', 'POST'])
+def groups():
+    if not asyncio.run(is_authorized()):
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        selected_ids = request.form.getlist('enabled_groups')
+        groups = load_json(GROUPS_FILE, [])
+        for group in groups:
+            group['enabled'] = str(group['id']) in selected_ids
+        save_json(GROUPS_FILE, groups)
+        flash('Groups updated.', 'success')
+    if not os.path.exists(GROUPS_FILE) or request.args.get('refresh'):
+        groups = asyncio.run(fetch_groups())
+        existing = load_json(GROUPS_FILE, [])
+        existing_map = {g['id']: g for g in existing}
+        for group in groups:
+            if group['id'] in existing_map:
+                group['enabled'] = existing_map[group['id']]['enabled']
+                group['last_sent'] = existing_map[group['id']].get('last_sent')
+        save_json(GROUPS_FILE, groups)
+    else:
+        groups = load_json(GROUPS_FILE, [])
+    if not groups:
+        flash('No groups found. Join some groups/channels.', 'info')
+    return render_template('groups.html', groups=groups)
 
-# -------------------- Local Testing --------------------
+@app.route('/messages', methods=['GET', 'POST'])
+def messages():
+    if not asyncio.run(is_authorized()):
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        text = request.form.get('text', '')
+        rotation = request.form.get('rotation', 'sequential')
+        media_paths = []
+        if 'media' in request.files:
+            files = request.files.getlist('media')
+            for file in files:
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    file_path = os.path.join(UPLOAD_FOLDER, filename)
+                    file.save(file_path)
+                    media_paths.append(file_path)
+                elif file.filename:
+                    flash(f'Invalid file: {file.filename}.', 'error')
+        if not text and not media_paths:
+            flash('Text or media required.', 'error')
+            return render_template('messages.html')
+        messages = load_json(MESSAGES_FILE, [])
+        new_message = {
+            'text': text,
+            'media': media_paths,
+            'caption': text if media_paths else '',
+            'type': 'multi' if len(media_paths) > 1 else 'single'
+        }
+        messages.append(new_message)
+        save_json(MESSAGES_FILE, messages)
+        scheduler = load_json(SCHEDULER_FILE, {'rotation': 'sequential'})
+        scheduler['rotation'] = rotation
+        save_json(SCHEDULER_FILE, scheduler)
+        flash('Message added.', 'success')
+    messages = load_json(MESSAGES_FILE, [])
+    scheduler = load_json(SCHEDULER_FILE, {'rotation': 'sequential'})
+    return render_template('messages.html', messages=messages, rotation=scheduler['rotation'])
+
+@app.route('/delete_message/<int:index>')
+def delete_message(index):
+    if not asyncio.run(is_authorized()):
+        return redirect(url_for('login'))
+    messages = load_json(MESSAGES_FILE, [])
+    if 0 <= index < len(messages):
+        for media in messages[index]['media']:
+            try:
+                os.remove(media)
+            except OSError:
+                pass
+        messages.pop(index)
+        save_json(MESSAGES_FILE, messages)
+        flash('Message deleted.', 'success')
+    else:
+        flash('Invalid message index.', 'error')
+    return redirect(url_for('messages'))
+
+@app.route('/delete_group/<int:id>')
+def delete_group(id):
+    if not asyncio.run(is_authorized()):
+        return redirect(url_for('login'))
+    groups = load_json(GROUPS_FILE, [])
+    groups = [g for g in groups if g['id'] != id]
+    save_json(GROUPS_FILE, groups)
+    flash('Group removed.', 'success')
+    return redirect(url_for('groups'))
+
+@app.route('/scheduler', methods=['GET', 'POST'])
+def scheduler():
+    if not asyncio.run(is_authorized()):
+        return redirect(url_for('login'))
+    config = load_json(SCHEDULER_FILE, {
+        'mode': 'interval',
+        'interval': {'value': 15, 'unit': 'minutes'},
+        'active': False,
+        'rotation': 'sequential'
+    })
+    if request.method == 'POST':
+        mode = request.form.get('mode')
+        if mode == 'interval':
+            try:
+                value = int(request.form.get('interval_value', 15))
+                unit = request.form.get('interval_unit', 'minutes')
+                if value <= 0:
+                    raise ValueError
+                config = {'mode': mode, 'interval': {'value': value, 'unit': unit}}
+            except ValueError:
+                flash('Invalid interval value.', 'error')
+                return render_template('scheduler.html', config=config)
+        elif mode == 'fixed':
+            times = request.form.get('fixed_times', '').split(',')
+            valid_times = []
+            for t in times:
+                t = t.strip()
+                if t and ':' in t:
+                    try:
+                        hour, minute = map(int, t.split(':'))
+                        if 0 <= hour <= 23 and 0 <= minute <= 59:
+                            valid_times.append(t)
+                    except ValueError:
+                        continue
+            if not valid_times:
+                flash('No valid times provided.', 'error')
+                return render_template('scheduler.html', config=config)
+            config = {'mode': mode, 'fixed_times': valid_times}
+        else:
+            flash('Invalid scheduling mode.', 'error')
+            return render_template('scheduler.html', config=config)
+        config['active'] = 'active' in request.form
+        save_json(SCHEDULER_FILE, config)
+        flash('Scheduler updated.', 'success')
+    return render_template('scheduler.html', config=config)
+
+@app.route('/logs')
+def logs():
+    if not asyncio.run(is_authorized()):
+        return redirect(url_for('login'))
+    logs = load_json(LOGS_FILE, [])
+    return render_template('logs.html', logs=logs)
+
+@app.route('/send_test')
+def send_test():
+    if not asyncio.run(is_authorized()):
+        return redirect(url_for('login'))
+    messages_list = load_json(MESSAGES_FILE, [])
+    if not messages_list:
+        flash('No messages to send.', 'error')
+        return redirect(url_for('home'))
+    test_message = messages_list[0]
+    groups_list = load_json(GROUPS_FILE, [])
+    enabled_groups = [g for g in groups_list if g['enabled']]
+    if not enabled_groups:
+        flash('No enabled groups.', 'error')
+        return redirect(url_for('home'))
+    for group in enabled_groups:
+        success, error = asyncio.run(post_message(group['id'], test_message))
+        if success:
+            flash(f'Test sent to {group["name"]}.', 'success')
+        else:
+            flash(f'Failed to send to {group["name"]}: {error}', 'error')
+    return redirect(url_for('home'))
+
+# -------------------- Run Locally --------------------
 if __name__ == '__main__':
-    start_scheduler()  # Only for local test
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
