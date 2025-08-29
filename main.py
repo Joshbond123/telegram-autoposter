@@ -1,19 +1,20 @@
 # main.py: Flask application for Telegram Auto-Poster Web Dashboard
-# Updated to use config.py for constants, removing circular import with autoposter.py
-# Handles Telegram auth, dashboard routes, file uploads, scheduling
+# Updated to fix asyncio.get_running_loop error by using a single event loop for Telethon calls
+# Handles Telegram auth, dashboard routes, file uploads, scheduling, message/group deletion
 # Edge cases: invalid inputs, Telegram errors (flood, permissions), JSON corruption, no groups/messages,
 # invalid delete indices/IDs, session expiration, file deletion failures
-# Uses asyncio.run for Telethon calls; renders Bootstrap templates with icons
+# Uses Bootstrap templates with icons for beautiful, responsive UI
 
-import asyncio
+import os
 import json
+import asyncio
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PasswordHashInvalidError, FloodWaitError
 from telethon.tl.types import Channel
 from werkzeug.utils import secure_filename
 from autoposter import start_scheduler  # Imports scheduler startup
-from config import API_ID, API_HASH, SESSION_FILE, GROUPS_FILE, MESSAGES_FILE, SCHEDULER_FILE, LOGS_FILE, UPLOAD_FOLDER  # Import configs
+from config import API_ID, API_HASH, SESSION_FILE, GROUPS_FILE, MESSAGES_FILE, SCHEDULER_FILE, LOGS_FILE, UPLOAD_FOLDER
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -23,6 +24,23 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB upload limit
 
 # Allowed file extensions for uploads
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'pdf', 'doc', 'docx'}
+
+# Single event loop for async calls to avoid get_running_loop errors
+loop = asyncio.get_event_loop()
+
+def async_wrapper(coro):
+    """Run async coroutine in Flask's sync context using a single event loop."""
+    try:
+        if loop.is_running():
+            # If loop is already running (unlikely in sync Flask), use create_task
+            future = asyncio.ensure_future(coro, loop=loop)
+            return loop.run_until_complete(future)
+        else:
+            # Normal case: run coroutine in existing loop
+            return loop.run_until_complete(coro)
+    except RuntimeError as e:
+        print(f"Async error: {e}")
+        raise
 
 def allowed_file(filename):
     """Validate uploaded file extension."""
@@ -88,7 +106,7 @@ start_scheduler()
 @app.route('/')
 def index():
     """Root route: Redirect to home if authorized, else login."""
-    if asyncio.run(is_authorized()):
+    if async_wrapper(is_authorized()):
         return redirect(url_for('home'))
     return redirect(url_for('login'))
 
@@ -102,8 +120,11 @@ def login():
             return render_template('login.html')
         client = get_client()
         try:
-            asyncio.run(client.connect())
-            sent_code = asyncio.run(client.send_code_request(phone))
+            async def login_task():
+                await client.connect()
+                sent_code = await client.send_code_request(phone)
+                return sent_code
+            sent_code = async_wrapper(login_task())
             session['phone'] = phone
             session['phone_code_hash'] = sent_code.phone_code_hash
             flash('Code sent to Telegram.', 'success')
@@ -113,7 +134,7 @@ def login():
         except Exception as e:
             flash(f'Error: {str(e)}', 'error')
         finally:
-            asyncio.run(client.disconnect())
+            async_wrapper(client.disconnect())
     return render_template('login.html')
 
 @app.route('/enter_code', methods=['GET', 'POST'])
@@ -129,8 +150,10 @@ def enter_code():
             return render_template('enter_code.html')
         client = get_client()
         try:
-            asyncio.run(client.connect())
-            asyncio.run(client.sign_in(session['phone'], code, phone_code_hash=session['phone_code_hash']))
+            async def sign_in_task():
+                await client.connect()
+                await client.sign_in(session['phone'], code, phone_code_hash=session['phone_code_hash'])
+            async_wrapper(sign_in_task())
             flash('Login successful!', 'success')
             return redirect(url_for('home'))
         except SessionPasswordNeededError:
@@ -141,7 +164,7 @@ def enter_code():
         except Exception as e:
             flash(f'Error: {str(e)}', 'error')
         finally:
-            asyncio.run(client.disconnect())
+            async_wrapper(client.disconnect())
     return render_template('enter_code.html')
 
 @app.route('/enter_password', methods=['GET', 'POST'])
@@ -157,8 +180,10 @@ def enter_password():
             return render_template('enter_password.html')
         client = get_client()
         try:
-            asyncio.run(client.connect())
-            asyncio.run(client.sign_in(password=password))
+            async def sign_in_password_task():
+                await client.connect()
+                await client.sign_in(password=password)
+            async_wrapper(sign_in_password_task())
             flash('2FA verified!', 'success')
             return redirect(url_for('home'))
         except PasswordHashInvalidError:
@@ -166,15 +191,15 @@ def enter_password():
         except Exception as e:
             flash(f'Error: {str(e)}', 'error')
         finally:
-            asyncio.run(client.disconnect())
+            async_wrapper(client.disconnect())
     return render_template('enter_password.html')
 
 @app.route('/home')
 def home():
     """Home page: Displays overview (username, last message, next schedule, enabled groups)."""
-    if not asyncio.run(is_authorized()):
+    if not async_wrapper(is_authorized()):
         return redirect(url_for('login'))
-    username = asyncio.run(fetch_username()) or 'Unknown'
+    username = async_wrapper(fetch_username()) or 'Unknown'
     messages = load_json(MESSAGES_FILE, [])
     last_message = messages[-1] if messages else {'text': 'None', 'media': [], 'caption': ''}
     scheduler = load_json(SCHEDULER_FILE, {'next_time': 'N/A'})
@@ -185,7 +210,7 @@ def home():
 @app.route('/groups', methods=['GET', 'POST'])
 def groups():
     """Groups page: Lists groups with checkboxes, saves enabled status."""
-    if not asyncio.run(is_authorized()):
+    if not async_wrapper(is_authorized()):
         return redirect(url_for('login'))
     if request.method == 'POST':
         selected_ids = request.form.getlist('enabled_groups')
@@ -195,7 +220,7 @@ def groups():
         save_json(GROUPS_FILE, groups)
         flash('Groups updated.', 'success')
     if not os.path.exists(GROUPS_FILE) or request.args.get('refresh'):
-        groups = asyncio.run(fetch_groups())
+        groups = async_wrapper(fetch_groups())
         existing = load_json(GROUPS_FILE, [])
         existing_map = {g['id']: g for g in existing}
         for group in groups:
@@ -212,7 +237,7 @@ def groups():
 @app.route('/messages', methods=['GET', 'POST'])
 def messages():
     """Messages page: Composes messages with text/media, saves to JSON."""
-    if not asyncio.run(is_authorized()):
+    if not async_wrapper(is_authorized()):
         return redirect(url_for('login'))
     if request.method == 'POST':
         text = request.form.get('text', '')
@@ -251,7 +276,7 @@ def messages():
 @app.route('/delete_message/<int:index>')
 def delete_message(index):
     """Delete a message by index, including associated media files."""
-    if not asyncio.run(is_authorized()):
+    if not async_wrapper(is_authorized()):
         return redirect(url_for('login'))
     messages = load_json(MESSAGES_FILE, [])
     if 0 <= index < len(messages):
@@ -270,7 +295,7 @@ def delete_message(index):
 @app.route('/delete_group/<int:id>')
 def delete_group(id):
     """Delete a group by ID from groups.json."""
-    if not asyncio.run(is_authorized()):
+    if not async_wrapper(is_authorized()):
         return redirect(url_for('login'))
     groups = load_json(GROUPS_FILE, [])
     groups = [g for g in groups if g['id'] != id]
@@ -281,7 +306,7 @@ def delete_group(id):
 @app.route('/scheduler', methods=['GET', 'POST'])
 def scheduler():
     """Scheduler page: Configures mode/interval/fixed times, active toggle."""
-    if not asyncio.run(is_authorized()):
+    if not async_wrapper(is_authorized()):
         return redirect(url_for('login'))
     if request.method == 'POST':
         mode = request.form.get('mode')
@@ -336,7 +361,7 @@ def scheduler():
 @app.route('/logs')
 def logs():
     """Logs page: Displays message history."""
-    if not asyncio.run(is_authorized()):
+    if not async_wrapper(is_authorized()):
         return redirect(url_for('login'))
     logs = load_json(LOGS_FILE, [])
     return render_template('logs.html', logs=logs)
@@ -344,7 +369,7 @@ def logs():
 @app.route('/send_test')
 def send_test():
     """Test send button: Sends first message to enabled groups."""
-    if not asyncio.run(is_authorized()):
+    if not async_wrapper(is_authorized()):
         return redirect(url_for('login'))
     from autoposter import post_message
     messages = load_json(MESSAGES_FILE, [])
@@ -358,7 +383,7 @@ def send_test():
         flash('No enabled groups.', 'error')
         return redirect(url_for('home'))
     for group in enabled_groups:
-        success, error = asyncio.run(post_message(group['id'], test_message))
+        success, error = async_wrapper(post_message(group['id'], test_message))
         if success:
             flash(f'Test sent to {group["name"]}.', 'success')
         else:
