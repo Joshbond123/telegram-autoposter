@@ -1,12 +1,12 @@
 # config.py: Shared configuration for Telegram Auto-Poster
-# Updated with provided Telegram API credentials, formatted correctly
+# Updated to use environment variables for API credentials
 # Holds file paths to avoid circular imports; used by main.py and autoposter.py
 
 import os
 
-# Telegram API credentials (verified as provided)
-API_ID = 29390017
-API_HASH = 'dec686aa277bc1445033486fe4f71035'
+# Telegram API credentials (set as environment variables in Render for security)
+API_ID = int(os.getenv('API_ID', '29390017'))  # Fallback to provided value
+API_HASH = os.getenv('API_HASH', 'dec686aa277bc1445033486fe4f71035')  # Fallback to provided value
 
 # Storage paths (persistent on Render with Persistent Disk)
 STORAGE_FOLDER = 'storage'
