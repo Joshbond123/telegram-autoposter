@@ -1,5 +1,5 @@
 # main.py: Flask application for Telegram Auto-Poster Web Dashboard
-# Updated to fix asyncio.get_running_loop error by using a single event loop for Telethon calls
+# Updated to fix TypeError in async_wrapper by ensuring proper coroutine handling
 # Handles Telegram auth, dashboard routes, file uploads, scheduling, message/group deletion
 # Edge cases: invalid inputs, Telegram errors (flood, permissions), JSON corruption, no groups/messages,
 # invalid delete indices/IDs, session expiration, file deletion failures
@@ -13,7 +13,7 @@ from telethon import TelegramClient
 from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PasswordHashInvalidError, FloodWaitError
 from telethon.tl.types import Channel
 from werkzeug.utils import secure_filename
-from autoposter import start_scheduler  # Imports scheduler startup
+from autoposter import start_scheduler, post_message  # Imports scheduler and post_message
 from config import API_ID, API_HASH, SESSION_FILE, GROUPS_FILE, MESSAGES_FILE, SCHEDULER_FILE, LOGS_FILE, UPLOAD_FOLDER
 
 # Initialize Flask app
@@ -25,22 +25,18 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB upload limit
 # Allowed file extensions for uploads
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'pdf', 'doc', 'docx'}
 
-# Single event loop for async calls to avoid get_running_loop errors
-loop = asyncio.get_event_loop()
-
 def async_wrapper(coro):
     """Run async coroutine in Flask's sync context using a single event loop."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        if loop.is_running():
-            # If loop is already running (unlikely in sync Flask), use create_task
-            future = asyncio.ensure_future(coro, loop=loop)
-            return loop.run_until_complete(future)
-        else:
-            # Normal case: run coroutine in existing loop
-            return loop.run_until_complete(coro)
-    except RuntimeError as e:
+        result = loop.run_until_complete(coro)
+        return result
+    except Exception as e:
         print(f"Async error: {e}")
         raise
+    finally:
+        loop.close()
 
 def allowed_file(filename):
     """Validate uploaded file extension."""
@@ -56,11 +52,11 @@ async def is_authorized():
     try:
         await client.connect()
         authorized = await client.is_user_authorized()
+        return authorized
     except Exception:
-        authorized = False
+        return False
     finally:
         await client.disconnect()
-    return authorized
 
 async def fetch_username():
     """Fetch logged-in Telegram username."""
@@ -371,7 +367,6 @@ def send_test():
     """Test send button: Sends first message to enabled groups."""
     if not async_wrapper(is_authorized()):
         return redirect(url_for('login'))
-    from autoposter import post_message
     messages = load_json(MESSAGES_FILE, [])
     if not messages:
         flash('No messages to send.', 'error')
