@@ -1,7 +1,7 @@
 # main.py: Flask application for Telegram Auto-Poster Web Dashboard
-# Updated to fix TypeError in async_wrapper by ensuring proper coroutine handling
+# Updated to fix RuntimeWarning by properly awaiting client.disconnect()
 # Handles Telegram auth, dashboard routes, file uploads, scheduling, message/group deletion
-# Edge cases: invalid inputs, Telegram errors (flood, permissions), JSON corruption, no groups/messages,
+# Edge cases: invalid inputs, Telegram errors (flood, permissions, invalid API), JSON corruption,
 # invalid delete indices/IDs, session expiration, file deletion failures
 # Uses Bootstrap templates with icons for beautiful, responsive UI
 
@@ -10,10 +10,10 @@ import json
 import asyncio
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from telethon import TelegramClient
-from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PasswordHashInvalidError, FloodWaitError
+from telethon.errors import SessionPasswordNeededError, PhoneCodeInvalidError, PasswordHashInvalidError, FloodWaitError, ApiIdInvalidError
 from telethon.tl.types import Channel
 from werkzeug.utils import secure_filename
-from autoposter import start_scheduler, post_message  # Imports scheduler and post_message
+from autoposter import start_scheduler, post_message
 from config import API_ID, API_HASH, SESSION_FILE, GROUPS_FILE, MESSAGES_FILE, SCHEDULER_FILE, LOGS_FILE, UPLOAD_FOLDER
 
 # Initialize Flask app
@@ -26,7 +26,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB upload limit
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'pdf', 'doc', 'docx'}
 
 def async_wrapper(coro):
-    """Run async coroutine in Flask's sync context using a single event loop."""
+    """Run async coroutine in Flask's sync context using a new event loop."""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -36,6 +36,8 @@ def async_wrapper(coro):
         print(f"Async error: {e}")
         raise
     finally:
+        # Ensure all async tasks are completed and loop is closed
+        loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
 
 def allowed_file(filename):
@@ -125,12 +127,16 @@ def login():
             session['phone_code_hash'] = sent_code.phone_code_hash
             flash('Code sent to Telegram.', 'success')
             return redirect(url_for('enter_code'))
+        except ApiIdInvalidError:
+            flash('Invalid API ID or API Hash. Check credentials.', 'error')
         except FloodWaitError as e:
             flash(f'Flood wait: {e.seconds} seconds.', 'error')
         except Exception as e:
             flash(f'Error: {str(e)}', 'error')
         finally:
-            async_wrapper(client.disconnect())
+            async def disconnect_task():
+                await client.disconnect()
+            async_wrapper(disconnect_task())
     return render_template('login.html')
 
 @app.route('/enter_code', methods=['GET', 'POST'])
@@ -160,7 +166,9 @@ def enter_code():
         except Exception as e:
             flash(f'Error: {str(e)}', 'error')
         finally:
-            async_wrapper(client.disconnect())
+            async def disconnect_task():
+                await client.disconnect()
+            async_wrapper(disconnect_task())
     return render_template('enter_code.html')
 
 @app.route('/enter_password', methods=['GET', 'POST'])
@@ -187,7 +195,9 @@ def enter_password():
         except Exception as e:
             flash(f'Error: {str(e)}', 'error')
         finally:
-            async_wrapper(client.disconnect())
+            async def disconnect_task():
+                await client.disconnect()
+            async_wrapper(disconnect_task())
     return render_template('enter_password.html')
 
 @app.route('/home')
