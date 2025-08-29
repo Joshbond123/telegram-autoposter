@@ -1,5 +1,5 @@
 # main.py: Flask application for Telegram Auto-Poster Web Dashboard
-# Updated for Telethon 1.36.0 to avoid bug in 1.40.0, with improved error handling
+# Updated for Telethon 1.36.0 to avoid bug in 1.40.0, with robust async handling
 # Handles Telegram auth, dashboard routes, file uploads, scheduling, message/group deletion
 # Edge cases: invalid inputs, Telegram errors (flood, permissions, invalid API), JSON corruption,
 # invalid delete indices/IDs, session expiration, file deletion failures
@@ -36,7 +36,6 @@ def async_wrapper(coro):
         print(f"Async error: {e}")
         raise
     finally:
-        # Ensure all async tasks and generators are cleaned up
         loop.run_until_complete(loop.shutdown_asyncgens())
         loop.close()
 
@@ -339,4 +338,61 @@ def scheduler():
                     except ValueError:
                         continue
             if not valid_times:
-                flash('No valid times provided (use HH:MM, e
+                flash('No valid times provided (use HH:MM, e.g., 08:00).', 'error')
+                return render_template('scheduler.html')
+            config = {'mode': mode, 'fixed_times': valid_times}
+        else:
+            flash('Invalid scheduling mode.', 'error')
+            return render_template('scheduler.html')
+        config['active'] = 'active' in request.form
+        import random
+        import time
+        if 'last_start' not in config:
+            config['last_start'] = time.time()
+            config['activity_duration'] = random.randint(30, 60) * 60
+            config['rest_duration'] = random.randint(10, 15) * 60
+            config['is_resting'] = False
+            config['rest_start'] = None
+        save_json(SCHEDULER_FILE, config)
+        flash('Scheduler updated.', 'success')
+    config = load_json(SCHEDULER_FILE, {
+        'mode': 'interval',
+        'interval': {'value': 15, 'unit': 'minutes'},
+        'active': False,
+        'rotation': 'sequential'
+    })
+    return render_template('scheduler.html', config=config)
+
+@app.route('/logs')
+def logs():
+    """Logs page: Displays message history."""
+    if not async_wrapper(is_authorized()):
+        return redirect(url_for('login'))
+    logs = load_json(LOGS_FILE, [])
+    return render_template('logs.html', logs=logs)
+
+@app.route('/send_test')
+def send_test():
+    """Test send button: Sends first message to enabled groups."""
+    if not async_wrapper(is_authorized()):
+        return redirect(url_for('login'))
+    messages = load_json(MESSAGES_FILE, [])
+    if not messages:
+        flash('No messages to send.', 'error')
+        return redirect(url_for('home'))
+    test_message = messages[0]
+    groups = load_json(GROUPS_FILE, [])
+    enabled_groups = [g for g in groups if g['enabled']]
+    if not enabled_groups:
+        flash('No enabled groups.', 'error')
+        return redirect(url_for('home'))
+    for group in enabled_groups:
+        success, error = async_wrapper(post_message(group['id'], test_message))
+        if success:
+            flash(f'Test sent to {group["name"]}.', 'success')
+        else:
+            flash(f'Failed to send to {group["name"]}: {error}', 'error')
+    return redirect(url_for('home'))
+
+if __name__ == '__main__':
+    app.run(debug=True)
